@@ -164,36 +164,6 @@ v4l2-ctl --list-devices
 # HD Pro Webcam C920: /dev/video2
 ```
 
----
-
-## Inspired By
-
-Team 4 demonstration — Herbert Wertheim College of Engineering, University of Florida, which used a **HiWonder wireless IMU glove + ROS2 + WiFi** to control a Panda arm in PyBullet. This project replicates and extends that using only a standard USB webcam and Python.
-
-Key improvements over the original:
-- No hardware glove required — standard USB webcam only
-- All 7 joints controllable (original demonstrated 3)
-- Two-axis wrist control (roll + pitch) via camera geometry
-- Pick and place with proximity-based gripper trigger
-- Docker support for reproducible deployment
-
-- Robot model: **Franka Emika Panda** (via `pybullet_data`)
-- Hand tracking: **Google MediaPipe** Hand Landmarker Task API
-- Physics engine: **PyBullet** (Bullet Physics SDK)
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| `Invalid MIT-MAGIC-COOKIE-1` | `export DISPLAY=:1` (run `who` to confirm display number) |
-| `ModuleNotFoundError: mediapipe` | `eval "$(~/miniconda3/bin/conda shell.bash hook)"` |
-| `Camera N unavailable` | Run `v4l2-ctl --list-devices` and update `--camera` flag |
-| `Address already in use` | `kill $(lsof -t -i:5555)` then restart sim_server |
-| Robot not moving | Confirm sim_server prints `[SimServer] Ready on UDP 5555` |
-| Core dump on startup | Run as two separate processes — do not merge into one script |
-| Thumb always detected up | Ensure hand is fully visible and well-lit |
 
 ---
 
