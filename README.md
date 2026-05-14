@@ -109,13 +109,13 @@ panda-hand-control/
 
 ## Implementation Notes
 
-**Two processes** — MediaPipe and PyBullet both initialise an OpenGL/EGL context. Running both in one process causes SIGABRT. Separating into two processes communicating over UDP solves this completely.
+Two processes - MediaPipe and PyBullet both initialise an OpenGL/EGL context. Running both in one process causes SIGABRT. Separating into two processes communicating over UDP solves this completely.
 
-**Smoothing** — raw wrist tilt jitters ±3–5° per frame. A 12-frame rolling average (deque) reduces this to sub-degree noise without noticeable lag — the same interpolation approach used in the original Team 4 demonstration.
+Smoothing - raw wrist tilt jitters ±3–5° per frame. A 12-frame rolling average (deque) reduces this to sub-degree noise without noticeable lag — the same interpolation approach used in the original Team 4 demonstration.
 
-**Depth proxy** — without a depth camera, gripper-close is triggered by hand scale: the distance between wrist landmark 0 and middle-finger MCP landmark 9 in normalised image coordinates. A larger value means the hand is closer to the camera.
+Depth proxy - without a depth camera, gripper-close is triggered by hand scale: the distance between wrist landmark 0 and middle-finger MCP landmark 9 in normalised image coordinates. A larger value means the hand is closer to the camera.
 
-**Camera index** — on Ubuntu with built-in + USB webcam, use `v4l2-ctl --list-devices` to find your Logitech index (typically `/dev/video2`).
+Camera index - on Ubuntu with built-in + USB webcam, use `v4l2-ctl --list-devices` to find your Logitech index (typically `/dev/video2`).
 
 ---
 
