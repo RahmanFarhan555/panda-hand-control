@@ -1,6 +1,6 @@
 # Panda Robot Arm — Hand Gesture Control
 
-> Control all 7 joints of a Franka Panda robot arm in real-time using hand gestures from a USB webcam. No gloves, no controllers — just your hand.
+> Control all 7 joints of a Franka Panda robot arm in real-time using hand gestures from a USB webcam. No gloves, no controllers - just your hand.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-green?logo=google)
@@ -12,7 +12,7 @@
 
 ## Demo
 
-Control all 7 joints of a simulated Franka Panda arm using only your hand in front of a Logitech C920 webcam. MediaPipe detects 21 hand landmarks per frame. Finger combinations select joints. Wrist tilt drives movement like a joystick — tilt left to rotate one way, tilt right to rotate the other, hold flat to stop.
+Control all 7 joints of a simulated Franka Panda arm using only your hand in front of a Logitech C920 webcam. MediaPipe detects 21 hand landmarks per frame. Finger combinations select joints. Wrist tilt drives movement like a joystick - tilt left to rotate one way, tilt right to rotate the other, hold flat to stop.
 
 ```
 Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → PyBullet Panda
@@ -22,7 +22,7 @@ Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → Py
 
 ## Gesture Controls
 
-### Joint Selection — finger combinations
+### Joint Selection - finger combinations
 
 | Gesture | Fingers | Joint | Controls |
 |---|---|---|---|
@@ -34,7 +34,7 @@ Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → Py
 | 🤙 Shaka | Thumb + pinky | **Joint 6** | Wrist roll |
 | 🕷 Spider | Thumb + index + pinky | **Joint 7** | Hand yaw |
 
-### Movement — joystick style
+### Movement - joystick style
 
 Hold a finger gesture to select a joint, then tilt your wrist to move it:
 
@@ -171,41 +171,6 @@ v4l2-ctl --list-devices
 # Integrated Camera: /dev/video0
 # HD Pro Webcam C920: /dev/video2
 ```
-
-<<<<<<< HEAD
----
-
-## Inspired By
-
-Team 4 demonstration — Herbert Wertheim College of Engineering, University of Florida, which used a **HiWonder wireless IMU glove + ROS2 + WiFi** to control a Panda arm in PyBullet. This project replicates and extends that using only a standard USB webcam and Python.
-
-Key improvements over the original:
-- No hardware glove required — standard USB webcam only
-- All **7 joints** controllable (original demonstrated 3)
-- **Joystick-style bidirectional control** — tilt drives direction + speed
-- Two-axis wrist control (roll + pitch) via camera geometry
-- Pick and place with proximity-based gripper trigger
-- Docker support for reproducible deployment
-
-- Robot model: **Franka Emika Panda** (via `pybullet_data`)
-- Hand tracking: **Google MediaPipe** Hand Landmarker Task API
-- Physics engine: **PyBullet** (Bullet Physics SDK)
-
----
-
-## Troubleshooting
-
-| Problem | Fix |
-|---|---|
-| `Invalid MIT-MAGIC-COOKIE-1` | `export DISPLAY=:1` (run `who` to confirm display number) |
-| `ModuleNotFoundError: mediapipe` | `eval "$(~/miniconda3/bin/conda shell.bash hook)"` |
-| `Camera N unavailable` | Run `v4l2-ctl --list-devices` and update `--camera` flag |
-| `Address already in use` | `kill $(lsof -t -i:5555)` then restart sim_server |
-| Robot not moving | Confirm sim_server prints `[SimServer] Ready on UDP 5555` |
-| Core dump on startup | Run as two separate processes — do not merge into one script |
-| Joint moves only one way | Update to joystick delta control version |
-=======
->>>>>>> a23b558104cbab6b162b791a949c82ca1e9d06ab
 
 ---
 
