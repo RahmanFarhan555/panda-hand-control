@@ -1,222 +1,147 @@
-# RoboGrasp — Real-Time Perception & Manipulation
-## Phase 1: Workspace, Robot URDF & Gazebo Simulation
+# Panda Robot Arm — Hand Gesture Control
+
+> Control a Franka Panda robot arm in real-time using hand gestures captured from a USB webcam. No gloves, no controllers — just your hand.
+
+![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
+![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-green?logo=google)
+![PyBullet](https://img.shields.io/badge/PyBullet-3.2-orange)
+![Docker](https://img.shields.io/badge/Docker-ready-2496ED?logo=docker)
+![License](https://img.shields.io/badge/License-MIT-yellow)
 
 ---
 
-## System Requirements
+## Demo
 
-| Component | Version |
-|-----------|---------|
-| Ubuntu | 22.04 LTS |
-| ROS2 | Humble Hawksbill |
-| Gazebo | Fortress (via ros-humble-gazebo-*) |
-| Python | 3.10+ |
-| MoveIt2 | 2.x (Humble) |
+Control a simulated Franka Panda arm using only your hand in front of a Logitech C920 webcam. MediaPipe detects 21 hand landmarks per frame. Finger gestures select joints. Wrist tilt drives the angle. Pinch picks up objects.
+
+```
+Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → PyBullet Panda
+```
 
 ---
 
-## Step 1 — Install ROS2 Humble (if not done)
+## Gesture Controls
+
+| Gesture | Fingers | Action |
+|---|---|---|
+| ☝ Point | Index only | Log in to **Joint 1** (shoulder yaw) |
+| ✌ Peace | Index + middle | Log in to **Joint 2** (shoulder pitch) |
+| ✊ Fist | No fingers up | Auto switch → **Joint 3** (elbow) |
+| ↔ Wrist tilt | — | Move the currently active joint |
+| ✊ Fist (near cam) | Hand close to camera | **Close gripper** |
+| 🖐 Open | All fingers | **Open gripper** + deselect joint |
+| Q | — | Quit |
+
+---
+
+## Architecture
+
+```
+┌──────────────────────────────┐        ┌──────────────────────────────┐
+│         main.py              │        │        sim_server.py          │
+│                              │        │                              │
+│  Logitech C920 (/dev/video2) │        │  PyBullet GUI                │
+│           │                  │  UDP   │  Franka Panda URDF           │
+│  MediaPipe HandLandmarker    │──────▶ │  7-DOF position control      │
+│  Gesture classifier          │ :5555  │  Gripper control             │
+│  Wrist tilt + smoother       │        │  Physics @ 240 Hz            │
+│  OpenCV HUD overlay          │        │  Red cube (pick & place)     │
+└──────────────────────────────┘        └──────────────────────────────┘
+```
+
+Two separate processes communicate over UDP on localhost:5555.
+This prevents the EGL/X11 GPU context conflict between MediaPipe and PyBullet.
+
+---
+
+## Quick Start
+
+### Without Docker
 
 ```bash
-# Set locale
-sudo apt update && sudo apt install locales
-sudo locale-gen en_US en_US.UTF-8
-sudo update-locale LC_ALL=en_US.UTF-8 LANG=en_US.UTF-8
-export LANG=en_US.UTF-8
+git clone https://github.com/RahmanFarhan555/panda-hand-control.git
+cd panda-hand-control
+pip install -r requirements.txt
+export DISPLAY=:1
 
-# Add ROS2 apt repo
-sudo apt install software-properties-common curl
-sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
-  -o /usr/share/keyrings/ros-archive-keyring.gpg
-echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] \
-  http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" \
-  | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+# Terminal 1 — start physics simulation
+python3 src/sim_server.py
 
-# Install ROS2 desktop (includes RViz2, rqt, demos)
-sudo apt update && sudo apt upgrade
-sudo apt install ros-humble-desktop
-
-# Auto-source in .bashrc
-echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
-source ~/.bashrc
+# Terminal 2 — start hand tracking
+python3 src/main.py --camera 2
 ```
 
----
+> On first run, `hand_landmarker.task` (~10 MB) is downloaded automatically.
 
-## Step 2 — Install All Project Dependencies
+### With Docker
 
 ```bash
-# Core robotics packages
-sudo apt install -y \
-  ros-humble-moveit \
-  ros-humble-moveit-ros-planning-interface \
-  ros-humble-moveit-visual-tools \
-  ros-humble-gazebo-ros-pkgs \
-  ros-humble-gazebo-ros2-control \
-  ros-humble-ros2-control \
-  ros-humble-ros2-controllers \
-  ros-humble-joint-state-publisher \
-  ros-humble-joint-state-publisher-gui \
-  ros-humble-robot-state-publisher \
-  ros-humble-xacro \
-  ros-humble-tf2-tools \
-  ros-humble-tf2-ros \
-  ros-humble-rviz2 \
-  ros-humble-rqt \
-  ros-humble-rqt-graph \
-  python3-colcon-common-extensions \
-  python3-rosdep \
-  python3-vcstool
-
-# Python ML/perception stack
-pip3 install \
-  numpy \
-  opencv-python \
-  open3d \
-  torch torchvision \
-  ultralytics \
-  scipy \
-  transforms3d \
-  pyrealsense2 \
-  matplotlib \
-  pandas
-
-# Initialize rosdep
-sudo rosdep init
-rosdep update
+xhost +local:docker
+export DISPLAY=:1
+docker compose up
 ```
 
 ---
 
-## Step 3 — Create the ROS2 Workspace
+## Project Structure
 
-```bash
-# Create workspace
-mkdir -p ~/robograsp_ws/src
-cd ~/robograsp_ws/src
-
-# Clone Allegro Hand URDF + ros2_control config (lightweight, well-documented)
-git clone https://github.com/ros-controls/ros2_control_demos.git
-
-# Or use the Shadow Hand (more complex):
-# git clone https://github.com/shadow-robot/sr_common.git
-
-# Build the workspace
-cd ~/robograsp_ws
-rosdep install --from-paths src --ignore-src -r -y
-colcon build --symlink-install
-source install/setup.bash
-
-# Auto-source in .bashrc
-echo "source ~/robograsp_ws/install/setup.bash" >> ~/.bashrc
+```
+panda-hand-control/
+├── src/
+│   ├── main.py            # Hand tracking + gesture recognition
+│   └── sim_server.py      # PyBullet physics + UDP command server
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## Step 4 — Create the RoboGrasp Package
+## Pick and Place
 
-```bash
-cd ~/robograsp_ws/src
-
-# Create our main package
-ros2 pkg create robograsp \
-  --build-type ament_python \
-  --dependencies rclpy std_msgs sensor_msgs geometry_msgs \
-    moveit_msgs trajectory_msgs nav_msgs tf2_ros
-
-# Create subdirectory structure inside the package
-cd robograsp
-mkdir -p \
-  robograsp/perception \
-  robograsp/control \
-  robograsp/planning \
-  robograsp/evaluation \
-  launch \
-  config \
-  urdf \
-  worlds \
-  meshes
-
-# Rebuild after creating package
-cd ~/robograsp_ws
-colcon build --symlink-install
-source install/setup.bash
-```
+1. Use **Joint 1 + 2** to position the arm above the red cube
+2. Switch to **Joint 3** to lower the gripper
+3. Bring hand close to camera + make a fist → **gripper closes**
+4. Raise and move the arm to target position
+5. Open hand → **cube drops**
 
 ---
 
-## Step 5 — Understand the Package Structure
+## Implementation Notes
 
-After setup, your workspace looks like:
+**Two processes** — MediaPipe and PyBullet both initialise an OpenGL/EGL context. Running both in one process causes SIGABRT. Separating into two processes communicating over UDP solves this completely.
 
-```
-robograsp_ws/
-└── src/
-    └── robograsp/
-        ├── robograsp/               # Python source
-        │   ├── __init__.py
-        │   ├── perception/          # Phase 2: camera, detection, pose
-        │   │   ├── camera_node.py
-        │   │   ├── object_detector.py
-        │   │   └── pose_estimator.py
-        │   ├── control/             # Phase 4: PID, trajectory, F/T
-        │   │   ├── pid_controller.py
-        │   │   ├── trajectory_executor.py
-        │   │   └── force_controller.py
-        │   ├── planning/            # Phase 3: grasp candidates, scoring
-        │   │   ├── grasp_planner.py
-        │   │   ├── grasp_scorer.py
-        │   │   └── collision_checker.py
-        │   └── evaluation/          # Phase 5: metrics, dashboard
-        │       ├── grasp_evaluator.py
-        │       └── metrics_logger.py
-        ├── launch/
-        │   ├── simulation.launch.py     # Full simulation bringup
-        │   ├── perception.launch.py     # Perception stack only
-        │   └── full_pipeline.launch.py  # Everything
-        ├── config/
-        │   ├── robot_params.yaml        # Joint limits, PID gains
-        │   ├── moveit_config.yaml       # MoveIt2 planning config
-        │   └── camera_params.yaml       # Camera intrinsics
-        ├── urdf/
-        │   ├── robotic_hand.urdf.xacro  # Our hand description
-        │   └── tabletop_scene.urdf      # Table + objects
-        ├── worlds/
-        │   └── grasp_world.world        # Gazebo world file
-        ├── package.xml
-        └── setup.py
-```
+**Smoothing** — raw wrist tilt jitters ±3–5° per frame. A 12-frame rolling average (deque) reduces this to sub-degree noise without noticeable lag — the same interpolation approach used in the original Team 4 demonstration.
+
+**Depth proxy** — without a depth camera, gripper-close is triggered by hand scale: the distance between wrist landmark 0 and middle-finger MCP landmark 9 in normalised image coordinates. A larger value means the hand is closer to the camera.
+
+**Camera index** — on Ubuntu with built-in + USB webcam, use `v4l2-ctl --list-devices` to find your Logitech index (typically `/dev/video2`).
 
 ---
 
-## Step 6 — Verify Everything Works
+## Inspired By
 
-```bash
-# Test ROS2 is working
-ros2 topic list          # Should show /rosout, /parameter_events
-ros2 node list           # Empty initially — that's fine
+Team 4 demonstration — Herbert Wertheim College of Engineering, University of Florida, which used a **HiWonder wireless IMU glove + ROS2 + WiFi** to control a Panda arm in PyBullet. This project replicates and simplifies that using only a standard USB webcam and Python.
 
-# Test Gazebo launches
-ros2 launch gazebo_ros gazebo.launch.py
-
-# Test RViz2
-rviz2
-
-# Test MoveIt2 installation
-ros2 launch moveit2_tutorials demo.launch.py   # Shows Panda arm in RViz
-
-# Check all packages found
-ros2 pkg list | grep -E "moveit|gazebo|control"
-```
-
-If `moveit2_tutorials demo.launch.py` shows a Panda arm you can drag around — your stack is fully working.
+- Robot model: **Franka Emika Panda** (via `pybullet_data`)
+- Hand tracking: **Google MediaPipe** Hand Landmarker Task API
+- Physics engine: **PyBullet** (Bullet Physics SDK)
 
 ---
 
-## What's Next: Phase 2
+## Troubleshooting
 
-Once Phase 1 is verified, Phase 2 builds:
-1. A simulated depth camera in Gazebo publishing `/camera/depth/image_raw`
-2. A ROS2 node that subscribes and runs YOLOv8 inference
-3. Point cloud processing with Open3D
-4. 6DoF pose estimation of objects on the table
+| Problem | Fix |
+|---|---|
+| `Invalid MIT-MAGIC-COOKIE-1` | `export DISPLAY=:1` (run `who` to confirm display number) |
+| `ModuleNotFoundError: mediapipe` | `eval "$(~/miniconda3/bin/conda shell.bash hook)"` |
+| `Camera N unavailable` | Run `v4l2-ctl --list-devices` and update `--camera` flag |
+| Robot not moving | Confirm sim_server prints `[SimServer] Ready on UDP 5555` |
+| Core dump on startup | Run as two separate processes — do not merge into one script |
+
+---
+
+## License
+
+MIT — free to use, modify, and distribute.
