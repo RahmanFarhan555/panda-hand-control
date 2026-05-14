@@ -1,0 +1,28 @@
+version: "3.9"
+
+services:
+  sim_server:
+    build: .
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./src:/app/src
+    devices:
+      - /dev/dri:/dev/dri
+    command: python3 src/sim_server.py
+
+  hand_tracker:
+    build: .
+    network_mode: host
+    environment:
+      - DISPLAY=${DISPLAY}
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - ./src:/app/src
+    devices:
+      - /dev/video2:/dev/video2
+    command: python3 src/main.py --camera 2
+    depends_on:
+      - sim_server
