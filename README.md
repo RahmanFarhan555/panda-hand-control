@@ -172,6 +172,7 @@ v4l2-ctl --list-devices
 # HD Pro Webcam C920: /dev/video2
 ```
 
+<<<<<<< HEAD
 ---
 
 ## Inspired By
@@ -203,6 +204,8 @@ Key improvements over the original:
 | Robot not moving | Confirm sim_server prints `[SimServer] Ready on UDP 5555` |
 | Core dump on startup | Run as two separate processes — do not merge into one script |
 | Joint moves only one way | Update to joystick delta control version |
+=======
+>>>>>>> a23b558104cbab6b162b791a949c82ca1e9d06ab
 
 ---
 
