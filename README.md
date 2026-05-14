@@ -1,6 +1,6 @@
 # Panda Robot Arm — Hand Gesture Control
 
-> Control a Franka Panda robot arm in real-time using hand gestures captured from a USB webcam. No gloves, no controllers — just your hand.
+> Control all 7 joints of a Franka Panda robot arm in real-time using hand gestures from a USB webcam. No gloves, no controllers — just your hand.
 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-green?logo=google)
@@ -12,7 +12,7 @@
 
 ## Demo
 
-Control all 7 joints of a simulated Franka Panda arm using only your hand in front of a Logitech C920 webcam. MediaPipe detects 21 hand landmarks per frame. Finger combinations select joints. Wrist tilt drives the angle. Pinch picks up a red cube.
+Control all 7 joints of a simulated Franka Panda arm using only your hand in front of a Logitech C920 webcam. MediaPipe detects 21 hand landmarks per frame. Finger combinations select joints. Wrist tilt drives movement like a joystick — tilt left to rotate one way, tilt right to rotate the other, hold flat to stop.
 
 ```
 Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → PyBullet Panda
@@ -34,13 +34,19 @@ Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → Py
 | 🤙 Shaka | Thumb + pinky | **Joint 6** | Wrist roll |
 | 🕷 Spider | Thumb + index + pinky | **Joint 7** | Hand yaw |
 
-### Movement
+### Movement — joystick style
 
-| Action | Effect |
+Hold a finger gesture to select a joint, then tilt your wrist to move it:
+
+| Wrist action | Effect |
 |---|---|
-| ↔ Wrist roll (tilt left/right) | Primary movement axis (70% weight) |
-| ↕ Wrist pitch (lean forward/back) | Secondary movement axis (30% weight) |
-| 12-frame rolling average | Smoothing — removes jitter |
+| Tilt LEFT | Joint rotates in negative direction |
+| Tilt RIGHT | Joint rotates in positive direction |
+| Hold flat (centre) | Joint stops — dead zone ±8° |
+| Lean FORWARD | Additional movement (secondary axis) |
+| Lean BACK | Opposite direction |
+
+Movement speed is proportional to tilt angle. The further you tilt, the faster the joint moves. Release back to centre to stop.
 
 ### Gripper
 
@@ -62,8 +68,8 @@ Logitech C920 → MediaPipe (21 landmarks) → Gesture Classifier → UDP → Py
 │  MediaPipe HandLandmarker    │──────▶ │  7-DOF position control      │
 │  21 landmark detection       │ :5555  │  Gripper control             │
 │  Finger combination classify │        │  Physics @ 240 Hz            │
-│  Roll + pitch estimation     │        │  Red cube (pick & place)     │
-│  12-frame smoother           │        │                              │
+│  Roll + pitch joystick       │        │  Red cube (pick & place)     │
+│  Delta angle accumulator     │        │                              │
 │  OpenCV HUD overlay          │        └──────────────────────────────┘
 └──────────────────────────────┘
 ```
@@ -119,15 +125,16 @@ panda-hand-control/
 
 ## HUD Display
 
-The camera window shows a live overlay with:
+The camera window shows a live overlay:
 
 - **Gesture** — current detected gesture with emoji label
-- **Active** — which joint is currently selected
-- **Roll / Pitch** — wrist angles in degrees
+- **Active** — which joint is currently selected and its name
+- **Roll / Pitch** — wrist angles in degrees with live delta values
+- **Tilt bar** — visual left/right tilt indicator, orange when moving
 - **Proximity** — whether hand is close enough to trigger gripper
 - **Gripper** — CLOSED (red) or open (green)
-- **J1–J7 dots** — joint indicator row, active joint highlighted in blue
-- **T I M R P dots** — live finger detection status (green = extended)
+- **J1–J7 dots** — joint row, active joint highlighted in cyan
+- **T I M R P dots** — live finger detection (green = extended, grey = closed)
 
 ---
 
@@ -135,27 +142,28 @@ The camera window shows a live overlay with:
 
 A red cube spawns at [0.3, 0.0, 0.025] in the simulation:
 
-1. Use **J1 + J2** to position the arm above the cube
-2. Use **J3** to lower the elbow
-3. Use **J4–J7** to fine-tune wrist position over the cube
-4. Bring hand **close to camera** + make a **fist** → gripper closes
-5. Raise the arm using J2/J3
-6. Move to target position
-7. **Open hand** → gripper releases, cube drops
+1. **J1** — rotate base to face the cube
+2. **J2** — pitch shoulder to reach forward
+3. **J3** — bend elbow to lower arm
+4. **J4–J7** — fine-tune wrist orientation over cube
+5. Bring hand **close to camera** + make a **fist** → gripper closes
+6. **J2/J3** — raise arm with cube
+7. **J1** — rotate to target position
+8. **Open hand** → gripper releases, cube drops
 
 ---
 
 ## Implementation Notes
 
+**Joystick delta control** — instead of mapping tilt angle directly to joint angle (which forces one-directional movement), wrist tilt is used as a velocity input. Tilting left/right drives the joint in that direction at a speed proportional to tilt magnitude. A dead zone of ±8° prevents drift when holding still. This gives intuitive bidirectional control matching how a real joystick works.
+
 **Two processes** — MediaPipe initialises an EGL GPU context for TFLite inference. PyBullet also claims an OpenGL context for its GUI. Running both in one process causes SIGABRT. Two processes with UDP communication solves this completely.
 
-**Smoothing** — raw wrist tilt jitters ±3–5° per frame. A 12-frame rolling average (deque) reduces this to sub-degree noise without noticeable lag. This matches the interpolation approach described in the original Team 4 demonstration.
+**Smoothing** — wrist roll and pitch readings are averaged over an 8-frame rolling window to reduce jitter before the delta is computed.
 
-**Roll + Pitch blending** — wrist roll (landmarks 5→17) is the primary, reliable axis. Wrist pitch (landmarks 0→9) adds a secondary movement axis, blended at 70% roll / 30% pitch to mimic a two-axis IMU.
+**Roll + Pitch axes** — wrist roll (landmarks 5→17, left/right tilt) is the primary movement axis. Wrist pitch (landmarks 0→9, forward/back lean) contributes a secondary 40% assist, giving two degrees of freedom for controlling one joint.
 
-**Depth proxy** — gripper-close is triggered by hand scale (wrist-to-MCP distance in normalised image coordinates). Larger value = hand closer to camera = approaching the object. Threshold tuned to approximately 0.2m equivalent.
-
-**Finger classification** — MediaPipe provides normalised 3D landmark coordinates. Finger extension is detected by comparing tip Y vs PIP Y (tip above knuckle = extended). Thumb uses X-axis comparison due to its perpendicular anatomy.
+**Finger classification** — tip Y vs PIP Y comparison for fingers 2–5, X-axis comparison for thumb (perpendicular anatomy). Combinations of 7 distinct patterns map to all 7 joints.
 
 **Camera index** — on Ubuntu with built-in + Logitech USB webcam:
 ```bash
@@ -172,7 +180,8 @@ Team 4 demonstration — Herbert Wertheim College of Engineering, University of 
 
 Key improvements over the original:
 - No hardware glove required — standard USB webcam only
-- All 7 joints controllable (original demonstrated 3)
+- All **7 joints** controllable (original demonstrated 3)
+- **Joystick-style bidirectional control** — tilt drives direction + speed
 - Two-axis wrist control (roll + pitch) via camera geometry
 - Pick and place with proximity-based gripper trigger
 - Docker support for reproducible deployment
@@ -193,7 +202,7 @@ Key improvements over the original:
 | `Address already in use` | `kill $(lsof -t -i:5555)` then restart sim_server |
 | Robot not moving | Confirm sim_server prints `[SimServer] Ready on UDP 5555` |
 | Core dump on startup | Run as two separate processes — do not merge into one script |
-| Thumb always detected up | Ensure hand is fully visible and well-lit |
+| Joint moves only one way | Update to joystick delta control version |
 
 ---
 
