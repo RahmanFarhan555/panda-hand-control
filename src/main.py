@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 main.py — 7-joint Panda control, direct wrist tilt mapping
-Wrist tilt angle maps directly to joint angle (like original Team 4).
+All joints mapped to their full usable range.
 """
 import os, socket, json, argparse
 import numpy as np
@@ -11,10 +11,20 @@ import urllib.request
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task")
 MODEL_URL  = ("https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task")
 
+# Full joint ranges — mapped so tilt -90=min, +90=max
 JOINT_LIMITS = [
-    (-2.8973,  2.8973), (-1.7628,  1.7628), (-2.8973,  2.8973),
-    (-3.0718, -0.0698), (-2.8973,  2.8973), (-0.0175,  3.7525), (-2.8973,  2.8973),
+    (-2.8973,  2.8973),   # J1 — full range
+    (-1.7628,  1.7628),   # J2 — full range
+    (-2.8973,  2.8973),   # J3 — full range
+    (-3.0718, -0.0698),   # J4 — both negative but full range used
+    (-2.8973,  2.8973),   # J5 — full range
+    (-0.0175,  3.7525),   # J6 — full range
+    (-2.8973,  2.8973),   # J7 — full range
 ]
+
+# Home angles — robot starts here, tilt maps relative to these
+HOME = [0.0, -0.785, 0.0, -2.356, 0.0, 1.571, 0.785]
+
 JNAMES = ["J1 shoulder yaw","J2 shoulder pitch","J3 elbow",
           "J4 forearm","J5 wrist pitch","J6 wrist roll","J7 hand yaw"]
 GESTURE_TO_JOINT = {"j1":0,"j2":1,"j3":2,"j4":3,"j5":4,"j6":5,"j7":6}
@@ -54,20 +64,29 @@ def run(camera_index):
 
     def classify(f):
         t,i,m,r,p = f
-        if t and i and m and r and p:               return "open"
-        if not any(f):                              return "fist"
-        if not t and i and m and r and p:           return "j4"
-        if not t and i and m and r and not p:       return "j3"
-        if not t and i and m and not r and not p:   return "j2"
+        if t and i and m and r and p:                 return "open"
+        if not any(f):                                return "fist"
+        if not t and i and m and r and p:             return "j4"
+        if not t and i and m and r and not p:         return "j3"
+        if not t and i and m and not r and not p:     return "j2"
         if not t and i and not m and not r and not p: return "j1"
-        if t and i and not m and not r and p:       return "j7"
-        if t and not i and not m and not r and p:   return "j6"
+        if t and i and not m and not r and p:         return "j7"
+        if t and not i and not m and not r and p:     return "j6"
         if t and not i and not m and not r and not p: return "j5"
         return "other"
 
     def wrist_tilt(lm):
         dx=lm[5].x-lm[17].x; dy=lm[5].y-lm[17].y
         return float(np.clip(np.degrees(np.arctan2(dy,dx)), -90, 90))
+
+    def tilt_to_angle(tilt, joint_idx):
+        """
+        Map tilt -90..+90 to joint range.
+        Uses full range of each joint regardless of sign.
+        """
+        lo, hi = JOINT_LIMITS[joint_idx]
+        t = (tilt + 90.0) / 180.0   # 0..1
+        return lo + t * (hi - lo)
 
     def on_result(result, output_image, ts):
         if not result.hand_landmarks: last_result[0]=None; return
@@ -89,9 +108,9 @@ def run(camera_index):
     cap = cv2.VideoCapture(camera_index)
     if not cap.isOpened(): raise RuntimeError(f"Camera {camera_index} unavailable")
 
-    print(f"[OK] Camera {camera_index} — direct tilt control")
-    print("  ☝ ✌ 🤟 🖖 👍 🤙 🕷 → select joint")
-    print("  Tilt wrist            → move joint")
+    print(f"[OK] Camera {camera_index} — all 7 joints active")
+    print("  ☝ ✌ 🤟 🖖 👍 🤙 🕷 → select joint 1-7")
+    print("  Tilt wrist left/right → move joint through full range")
     print("  ✊ near cam           → close gripper")
     print("  🖐 open hand          → open gripper\n")
 
@@ -103,32 +122,44 @@ def run(camera_index):
         gripper= gripper_closed[0]
         near   = scale > NEAR_THR
 
-        cv2.rectangle(frame,(0,0),(420,200),(10,10,10),-1)
-        cv2.rectangle(frame,(0,0),(420,200),(70,70,70),1)
+        cv2.rectangle(frame,(0,0),(430,210),(10,10,10),-1)
+        cv2.rectangle(frame,(0,0),(430,210),(70,70,70),1)
         c=(0,220,100); cr=(0,80,255); cy=(0,200,255)
 
         glabel = GESTURE_LABELS.get(g,g)
-        jname  = JNAMES[joint] if joint is not None else "NONE"
+        jname  = JNAMES[joint] if joint is not None else "NONE — show finger gesture"
         jc     = cy if joint is not None else (120,120,120)
 
         cv2.putText(frame,f"Gesture : {glabel}",(10,28),cv2.FONT_HERSHEY_SIMPLEX,0.65,c,2)
         cv2.putText(frame,f"Active  : {jname}",(10,54),cv2.FONT_HERSHEY_SIMPLEX,0.58,jc,2)
         cv2.putText(frame,f"Tilt    : {tilt:+.1f} deg",(10,80),cv2.FONT_HERSHEY_SIMPLEX,0.65,c,2)
-        cv2.putText(frame,f"Proximity: {'NEAR — fist=grip' if near else 'far'}",(10,106),
+
+        # Show current angle for active joint
+        if joint is not None:
+            lo,hi = JOINT_LIMITS[joint]
+            cur = tilt_to_angle(tilt, joint)
+            pct = int((cur - lo) / (hi - lo) * 100)
+            cv2.putText(frame,f"Angle   : {cur:.3f} rad ({pct}%)",
+                        (10,104),cv2.FONT_HERSHEY_SIMPLEX,0.55,cy,2)
+
+        cv2.putText(frame,f"Proximity: {'NEAR — fist=grip' if near else 'far'}",(10,128),
                     cv2.FONT_HERSHEY_SIMPLEX,0.52,cr if near else c,2)
-        cv2.putText(frame,f"Gripper : {'CLOSED' if gripper else 'open'}",(10,132),
+        cv2.putText(frame,f"Gripper : {'CLOSED' if gripper else 'open'}",(10,152),
                     cv2.FONT_HERSHEY_SIMPLEX,0.65,cr if gripper else c,2)
 
+        # Joint dots
         for i in range(7):
             col=cy if i==joint else (45,45,45)
             cx_=16+i*56
-            cv2.circle(frame,(cx_,162),16,col,-1)
-            cv2.putText(frame,f"J{i+1}",(cx_-10,167),cv2.FONT_HERSHEY_SIMPLEX,0.38,(0,0,0),1)
+            cv2.circle(frame,(cx_,178),16,col,-1)
+            cv2.putText(frame,f"J{i+1}",(cx_-10,183),cv2.FONT_HERSHEY_SIMPLEX,0.38,(0,0,0),1)
+
+        # Finger dots
         if r:
             for i,(up,fl) in enumerate(zip(r["fingers"],["T","I","M","R","P"])):
                 fc=(0,220,100) if up else (60,60,60)
-                cv2.circle(frame,(16+i*30,185),9,fc,-1)
-                cv2.putText(frame,fl,(10+i*30,189),cv2.FONT_HERSHEY_SIMPLEX,0.3,(0,0,0),1)
+                cv2.circle(frame,(16+i*30,198),9,fc,-1)
+                cv2.putText(frame,fl,(10+i*30,202),cv2.FONT_HERSHEY_SIMPLEX,0.3,(0,0,0),1)
 
     try:
         while True:
@@ -148,15 +179,14 @@ def run(camera_index):
                 if g in GESTURE_TO_JOINT:
                     j = GESTURE_TO_JOINT[g]
                     if active_joint[0] != j:
-                        print(f"[Log in] {JNAMES[j]}")
+                        print(f"[Log in] {JNAMES[j]}  range=[{JOINT_LIMITS[j][0]:.2f}, {JOINT_LIMITS[j][1]:.2f}]")
                     active_joint[0] = j
 
-                    # Direct map: tilt -90..+90 → joint range
-                    lo, hi = JOINT_LIMITS[j]
-                    t = (tilt + 90.0) / 180.0
-                    angle_buf[j].append(lo + t * (hi - lo))
-                    send({"type":"joint","joint":j,
-                          "angle": float(np.mean(angle_buf[j]))})
+                    # Map tilt to full joint range
+                    target = tilt_to_angle(tilt, j)
+                    angle_buf[j].append(target)
+                    smoothed = float(np.mean(angle_buf[j]))
+                    send({"type":"joint","joint":j,"angle":smoothed})
 
                 elif g == "fist":
                     if near and not gripper_closed[0]:
