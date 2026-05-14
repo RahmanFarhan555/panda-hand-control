@@ -1,7 +1,6 @@
 # Panda Robot Arm — Hand Gesture Control
 
-> Control a Franka Panda robot arm in real-time using hand gestures captured from a USB webcam. No gloves, no controllers — just your hand.
-
+> Control a Franka Panda robot arm in real-time using hand gestures captured from a USB webcam. 
 ![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)
 ![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10-green?logo=google)
 ![PyBullet](https://img.shields.io/badge/PyBullet-3.2-orange)
@@ -117,16 +116,6 @@ panda-hand-control/
 **Depth proxy** — without a depth camera, gripper-close is triggered by hand scale: the distance between wrist landmark 0 and middle-finger MCP landmark 9 in normalised image coordinates. A larger value means the hand is closer to the camera.
 
 **Camera index** — on Ubuntu with built-in + USB webcam, use `v4l2-ctl --list-devices` to find your Logitech index (typically `/dev/video2`).
-
----
-
-## Inspired By
-
-Team 4 demonstration — Herbert Wertheim College of Engineering, University of Florida, which used a **HiWonder wireless IMU glove + ROS2 + WiFi** to control a Panda arm in PyBullet. This project replicates and simplifies that using only a standard USB webcam and Python.
-
-- Robot model: **Franka Emika Panda** (via `pybullet_data`)
-- Hand tracking: **Google MediaPipe** Hand Landmarker Task API
-- Physics engine: **PyBullet** (Bullet Physics SDK)
 
 ---
 
